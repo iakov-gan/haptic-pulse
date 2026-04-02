@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haptic Pulse</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .card {
+    background: #16213e;
+    border-radius: 20px;
+    padding: 48px 40px;
+    width: 340px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  h1 { font-size: 18px; font-weight: 400; color: #888; margin-bottom: 32px; letter-spacing: 2px; }
+  .bpm-display {
+    font-size: 72px;
+    font-weight: 700;
+    color: #e94560;
+    line-height: 1;
+  }
+  .bpm-label { font-size: 14px; color: #666; margin-top: 4px; letter-spacing: 3px; }
+  .slider-row { margin: 32px 0; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: #0f3460;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #e94560;
+    cursor: pointer;
+  }
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: background .2s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .btn-dur {
+    flex: 1;
+    background: #0f3460;
+    color: #e0e0e0;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 15px;
+  }
+  .btn-dur:hover { background: #1a4a7a; }
+  .btn-dur.active { background: #e94560; color: #fff; }
+  .btn-start { background: #e94560; color: #fff; }
+  .btn-start:hover { background: #d63851; }
+  .btn-stop {
+    background: #333;
+    color: #e94560;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-stop:hover { background: #444; }
+  .btn-stop .progress {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: rgba(233, 69, 96, 0.25);
+    border-radius: 12px;
+    transition: width .3s linear;
+    pointer-events: none;
+  }
+  .btn-stop .label { position: relative; z-index: 1; }
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #333;
+    margin-top: 24px;
+    transition: background .05s;
+  }
+  .dot.on { background: #e94560; box-shadow: 0 0 12px #e94560; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>HAPTIC PULSE</h1>
+  <div class="bpm-display" id="bpmVal">82</div>
+  <div class="bpm-label">BPM</div>
+  <div class="slider-row">
+    <input type="range" id="bpmSlider" min="30" max="240" value="82">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-dur" onclick="startFor(60)">1h</button>
+    <button class="btn btn-dur" onclick="startFor(120)">2h</button>
+    <button class="btn btn-dur" onclick="startFor(180)">3h</button>
+  </div>
+  <button class="btn btn-start" id="toggleBtn" onclick="toggle()">START</button>
+  <div class="dot" id="dot"></div>
+</div>
+<script>
+const URI = 'https://local.jmw.nz:41443/haptic/subtle_collision';
+let running = false;
+let nextTickMs = 0;
+let startTime = 0;
+let timerId = null;
+let stopTimerId = null;
+let totalDurationMs = 0;
+let startedAt = 0;
+let progressId = null;
+
+function setFaviconHref(href) {
+  let link = document.querySelector("link[rel='icon']");
+  if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+  link.href = href;
+}
+function setActiveFavicon() {
+  setFaviconHref("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23e94560'/></svg>");
+}
+function setIdleFavicon() {
+  setFaviconHref("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='6' fill='%23333'/></svg>");
+}
+setIdleFavicon();
+
+const slider = document.getElementById('bpmSlider');
+const bpmVal = document.getElementById('bpmVal');
+const btn    = document.getElementById('toggleBtn');
+const dot    = document.getElementById('dot');
+const durBtns = document.querySelectorAll('.btn-dur');
+
+slider.addEventListener('input', () => {
+  bpmVal.textContent = slider.value;
+  if (running) restart();
+});
+
+function getBPM() { return parseInt(slider.value); }
+function getIntervalMs() { return 60000 / getBPM(); }
+function toggle() { running ? stop() : start(); }
+
+function start() {
+  running = true;
+  totalDurationMs = 0;
+  btn.innerHTML = '<span class="label">STOP</span>';
+  btn.className = 'btn btn-stop';
+  startTime = performance.now();
+  nextTickMs = 0;
+  setActiveFavicon();
+  scheduleBeat();
+}
+
+function stop() {
+  running = false;
+  clearTimeout(timerId);
+  clearTimeout(stopTimerId);
+  clearInterval(progressId);
+  totalDurationMs = 0;
+  btn.textContent = 'START';
+  btn.className = 'btn btn-start';
+  dot.classList.remove('on');
+  durBtns.forEach(b => b.classList.remove('active'));
+  setIdleFavicon();
+}
+
+function startFor(minutes) {
+  if (running) stop();
+  durBtns.forEach(b => {
+    b.classList.toggle('active', parseInt(b.textContent) === minutes / 60);
+  });
+  start();
+  totalDurationMs = minutes * 60000;
+  startedAt = performance.now();
+  btn.innerHTML = '<div class="progress" id="progress"></div><span class="label">STOP</span>';
+  stopTimerId = setTimeout(() => stop(), totalDurationMs);
+  progressId = setInterval(updateProgress, 250);
+}
+
+function updateProgress() {
+  if (!running || !totalDurationMs) return;
+  const elapsed = performance.now() - startedAt;
+  const pct = Math.min(100, (elapsed / totalDurationMs) * 100);
+  const bar = document.getElementById('progress');
+  if (bar) bar.style.width = pct + '%';
+}
+
+function restart() {
+  if (!running) return;
+  clearTimeout(timerId);
+  startTime = performance.now();
+  nextTickMs = 0;
+  scheduleBeat();
+}
+
+function scheduleBeat() {
+  if (!running) return;
+  const now = performance.now() - startTime;
+  timerId = setTimeout(beat, Math.max(0, nextTickMs - now));
+}
+
+function beat() {
+  if (!running) return;
+  fetch(URI, { method: 'POST', mode: 'no-cors' }).catch(() => {});
+  nextTickMs += getIntervalMs();
+  dot.classList.add('on');
+  setTimeout(() => dot.classList.remove('on'), 80);
+  scheduleBeat();
+}
+</script>
+</body>
+</html>
