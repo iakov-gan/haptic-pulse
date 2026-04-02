@@ -2,9 +2,14 @@
 
 Sends periodic POST requests to a haptic feedback endpoint at a configurable BPM. Drift-corrected timing ensures precise tempo regardless of network latency.
 
+## Requirements
+
+- [Logitech MX Master 4](https://www.logitech.com/products/mice/mx-master-4.html) mouse
+- [Haptic Feedback for the Web](https://haptics.jmw.nz/) browser extension installed
+
 ## Web UI
 
-Open `haptic-pulse.html` in a browser. Features:
+Open `index.html` in a browser or visit the [GitHub Pages site](https://iakov-gan.github.io/haptic-pulse/). Features:
 
 - BPM slider (30–240)
 - Timed sessions: 1h / 2h / 3h with progress bar
@@ -20,3 +25,7 @@ Open `haptic-pulse.html` in a browser. Features:
 ```
 
 Uses `Stopwatch` + `HttpClient` with `DangerousAcceptAnyServerCertificateValidator` for precise, non-blocking requests.
+
+## Credits
+
+Powered by [Haptic Feedback for the Web](https://haptics.jmw.nz/) by JMW.
